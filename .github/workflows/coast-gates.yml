@@ -1,0 +1,68 @@
+# Coast deterministic gates (D23, D30 net 1; D47).
+# The proof verifier is a pure function of the PR trees + commit graph.
+# The review agent job (S14) is added by Coast when the pipeline reaches it.
+name: coast-gates
+
+on:
+  pull_request:
+
+jobs:
+  proof-verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify proof deterministically
+        run: |
+          python3 Scripts/checks/verify_proof.py \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}" \
+            "${{ github.head_ref }}"
+
+  swift-tests:
+    runs-on: ubuntu-latest
+    container: swift:6.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: swift test
+
+  # The reviewer identity (github-actions[bot], config A1 from the F5
+  # research). Plan PRs (S6): the deterministic gates ARE the plan's checks —
+  # once they pass, this job records the approving review the ruleset
+  # requires. Implementation PRs (S14): the review agent runs here and
+  # decides approve vs request-changes like a human reviewer (D26).
+  gate-review:
+    needs: [proof-verifier, swift-tests]
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Determine PR purpose from the proof file
+        id: purpose
+        run: |
+          FEATURE_ID="${GITHUB_HEAD_REF#feature/}"
+          PURPOSE=$(python3 -c "import json; print(json.load(open('plans/$FEATURE_ID/proof.json'))['purpose'])")
+          echo "purpose=$PURPOSE" >> "$GITHUB_OUTPUT"
+      - name: Approve plan PR (deterministic gates green)
+        if: steps.purpose.outputs.purpose == 'plan-pr'
+        run: |
+          gh api -X POST "/repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/reviews" \
+            -f event=APPROVE \
+            -f body="Plan gates green: proof verified deterministically (checks 1,2,3,4,8), schema valid, suite green. Approving the plan PR (S6)."
+      - name: Review agent (implementation PR)
+        if: steps.purpose.outputs.purpose == 'implementation-pr'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 Scripts/checks/review_agent.py "${{ github.event.pull_request.number }}" \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}"
