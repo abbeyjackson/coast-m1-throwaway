@@ -1,0 +1,68 @@
+{
+  "base_commit": "be1c219efb564d64e67c7e2f97453887326587d0",
+  "export_seq": 13,
+  "exported_at": "2026-07-16T15:28:09.213Z",
+  "feature_id": "F-M1",
+  "items": [
+    {
+      "content_hash": "sha256:01c4aef23784e72cd46cdb94a2ec4cfa5075a819ea57120e49f9fdb6022e3373",
+      "description": "Public Greeter service with greet(name:) -> String and greet() -> String",
+      "item_id": "F-M1-i001",
+      "kind": "type",
+      "origin": "plan",
+      "sensitive": false,
+      "target": "Sources/Greeter/Greeter.swift",
+      "verdicts": [
+        {
+          "agent_identity": {
+            "model": "mock",
+            "provider": "anthropic"
+          },
+          "approval_id": "465de95b-d1a1-4f73-ae05-24aa377e9631",
+          "approver_role": "architect",
+          "item_content_hash": "sha256:01c4aef23784e72cd46cdb94a2ec4cfa5075a819ea57120e49f9fdb6022e3373",
+          "plan_version": 1,
+          "rules_checked": [
+            {
+              "reasoning": "checked, holds for this item (mock reasoning for A-ALTITUDE)",
+              "rule": "A-ALTITUDE"
+            },
+            {
+              "reasoning": "checked, holds for this item (mock reasoning for A-COUPLING)",
+              "rule": "A-COUPLING"
+            },
+            {
+              "reasoning": "checked, holds for this item (mock reasoning for A-GRAIN)",
+              "rule": "A-GRAIN"
+            },
+            {
+              "reasoning": "checked, holds for this item (mock reasoning for A-KIND)",
+              "rule": "A-KIND"
+            },
+            {
+              "reasoning": "checked, holds for this item (mock reasoning for A-MODULE)",
+              "rule": "A-MODULE"
+            },
+            {
+              "reasoning": "checked, holds for this item (mock reasoning for A-NAMING)",
+              "rule": "A-NAMING"
+            },
+            {
+              "reasoning": "checked, holds for this item (mock reasoning for A-PROTO)",
+              "rule": "A-PROTO"
+            }
+          ],
+          "supersedes": null,
+          "timestamp": "2026-07-16T15:28:09.050Z",
+          "trigger": "initial",
+          "verdict": "approved"
+        }
+      ]
+    }
+  ],
+  "plan_file_hash": "sha256:4c51752681cf778152c2674f11e48fd42f8d018974ff80e7c799d7c9e1a9ae71",
+  "plan_version": 1,
+  "proof_schema_version": 1,
+  "purpose": "plan-pr",
+  "superseded_items": []
+}
