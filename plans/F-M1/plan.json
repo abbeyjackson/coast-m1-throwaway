@@ -1,0 +1,45 @@
+{
+  "acceptance_criteria": [
+    {
+      "given": "a Greeter instance",
+      "then": "it returns \"Hello, Alice!\"",
+      "when": "greet(name:) is called with \"Alice\""
+    },
+    {
+      "given": "a Greeter instance",
+      "then": "it returns \"Hello, !\"",
+      "when": "greet(name:) is called with an empty string \"\""
+    },
+    {
+      "given": "a Greeter instance",
+      "then": "it returns \"Hello, world!\"",
+      "when": "greet() is called with no arguments"
+    },
+    {
+      "given": "the GreeterTests target",
+      "then": "all new Greeter tests pass alongside the existing scaffold test",
+      "when": "the test suite is run"
+    }
+  ],
+  "base_commit": "4deb9794e52b50d89b0393f72b6a8d1bba7b00fc",
+  "db_change": false,
+  "declared_scope": [
+    "Sources/Greeter/Greeter.swift",
+    "Tests/GreeterTests/**",
+    "docs/features/T-M1/**"
+  ],
+  "feature_id": "F-M1",
+  "items": [
+    {
+      "content_hash": "sha256:6e2a781351ce62656d9ed64e640c9ed3084f5647aafe66ba32321f29031dd9af",
+      "description": "Add public type `Greeter` with method `greet(name: String) -> String` returning \"Hello, <name>!\" and method `greet() -> String` returning \"Hello, world!\".",
+      "item_id": "F-M1-i001",
+      "kind": "type",
+      "sensitive": false,
+      "target": "Sources/Greeter/Greeter.swift"
+    }
+  ],
+  "plan_schema_version": 1,
+  "plan_version": 1,
+  "ticket_ref": "T-M1"
+}
