@@ -1,7 +1,7 @@
 {
   "base_commit": "0db15fc16eb862b0352770be805a421d73c02fee",
-  "export_seq": 23,
-  "exported_at": "2026-07-16T21:48:56.996Z",
+  "export_seq": 66,
+  "exported_at": "2026-07-16T21:52:21.283Z",
   "feature_id": "F-M1",
   "items": [
     {
@@ -63,6 +63,6 @@
   "plan_file_hash": "sha256:d5c2801261972c20512a999255a247741582455abfb1d4345f10b5ccd84c5894",
   "plan_version": 1,
   "proof_schema_version": 1,
-  "purpose": "plan-pr",
+  "purpose": "implementation-pr",
   "superseded_items": []
 }
