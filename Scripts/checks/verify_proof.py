@@ -388,6 +388,12 @@ def main():
     for path in changed:
         if coast_written(path) or not path.endswith(".swift"):
             continue
+        # Test-target types are exempt: post-work unit tests are below plan
+        # resolution by design (D24 — S11 adds tests the plan never itemizes),
+        # and the v1 symbol-graph filler extracts app modules, not test
+        # targets. SPM convention: test targets live under Tests/.
+        if path.startswith("Tests/"):
+            continue
         added = git("diff", f"{base_sha}..{head_sha}", "--unified=0", "--", path)
         for line in added.splitlines():
             if not line.startswith("+") or line.startswith("+++"):
