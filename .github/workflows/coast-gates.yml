@@ -5,9 +5,12 @@ name: coast-gates
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 jobs:
   proof-verifier:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +38,7 @@ jobs:
   # requires. Implementation PRs (S14): the review agent runs here and
   # decides approve vs request-changes like a human reviewer (D26).
   gate-review:
+    if: github.event_name == 'pull_request'
     needs: [proof-verifier, swift-tests]
     runs-on: ubuntu-latest
     permissions:
