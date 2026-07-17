@@ -50,6 +50,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0  # the review agent diffs base..head — needs full history
       - name: Determine PR purpose from the proof file
         id: purpose
         run: |
