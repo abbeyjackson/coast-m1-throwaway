@@ -432,6 +432,14 @@ def main():
     if not [f for f in failures if f["check"] == "check7"]:
         ok("check7")
 
+    # Check 10 — single-author rule (D94: a rogue commit by any identity
+    # other than Coast's committer stands out and fails the gate).
+    authors = set(git("log", "--format=%an <%ae>", f"{base_sha}..{head_sha}").strip().splitlines())
+    if len(authors) > 1:
+        fail("check10", "authors", f"PR contains commits from multiple authors: {sorted(authors)}")
+    elif not [f for f in failures if f["check"] == "check10"]:
+        ok("check10", f"single author: {next(iter(authors), '?')}")
+
     # Check 9 — amendment closure (no orphan amendments, no unamended drift).
     amendment_dir = f"plans/{feature_id}/amendments"
     listed = git("ls-tree", "-r", "--name-only", head_sha, "--", amendment_dir).split()
