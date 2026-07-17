@@ -1,0 +1,68 @@
+{
+  "base_commit": "6dfb7dffe4693c86890604d0e68f0ed6e279b142",
+  "export_seq": 24,
+  "exported_at": "2026-07-17T00:56:19.436Z",
+  "feature_id": "F-M1",
+  "items": [
+    {
+      "content_hash": "sha256:feb7a5e449049b0bf5406d67fa70ce70a18277fbfcf68710a62c46cb7bf21c6d",
+      "description": "Public struct Greeter with greet(name: String) -> String returning \"Hello, <name>!\" and greet() -> String returning \"Hello, world!\"",
+      "item_id": "F-M1-i001",
+      "kind": "type",
+      "origin": "plan",
+      "sensitive": false,
+      "target": "Sources/Greeter/Greeter.swift",
+      "verdicts": [
+        {
+          "agent_identity": {
+            "model": "claude-sonnet-5",
+            "provider": "anthropic"
+          },
+          "approval_id": "81e6726e-ace3-45e1-84b1-84a7cfe5eb00",
+          "approver_role": "architect",
+          "item_content_hash": "sha256:feb7a5e449049b0bf5406d67fa70ce70a18277fbfcf68710a62c46cb7bf21c6d",
+          "plan_version": 1,
+          "rules_checked": [
+            {
+              "reasoning": "Item is declared kind 'type' and describes a public struct (Greeter) with two methods — this is exactly a type declaration, not a function/module/protocol masquerading as a type.",
+              "rule": "A-KIND"
+            },
+            {
+              "reasoning": "Target Sources/Greeter/Greeter.swift lives inside the existing 'Greeter' SwiftPM target declared in Package.swift, and the sibling Sources/Greeter/GreeterModule.swift confirms this is the intended home/namespace for Greeter functionality.",
+              "rule": "A-MODULE"
+            },
+            {
+              "reasoning": "This is a plain value-returning struct with no view layer, view-model, or data-access code involved — there is no domain logic sitting in a view or data access reaching from a view model, so altitude is not violated.",
+              "rule": "A-ALTITUDE"
+            },
+            {
+              "reasoning": "The existing GreeterModule.swift is only an empty namespace-marker enum scaffold with no logic; introducing the actual Greeter struct with greet() behavior in a new file is the right granularity (single cohesive type for the greeting responsibility) rather than over- or under-splitting.",
+              "rule": "A-GRAIN"
+            },
+            {
+              "reasoning": "'Greeter' as a noun type name and 'greet' as a verb method name follow Swift API Design Guidelines; overloading greet() and greet(name:) is idiomatic Swift parameter-based overloading, not misleading naming.",
+              "rule": "A-NAMING"
+            },
+            {
+              "reasoning": "No protocol is introduced by this item — it's a concrete struct with concrete methods, so there is no speculative abstraction to evaluate.",
+              "rule": "A-PROTO"
+            },
+            {
+              "reasoning": "The struct is self-contained with no imports beyond Foundation-free string interpolation; it introduces no dependency on other modules, so no forbidden import or direction violation occurs.",
+              "rule": "A-COUPLING"
+            }
+          ],
+          "supersedes": null,
+          "timestamp": "2026-07-17T00:56:15.590Z",
+          "trigger": "initial",
+          "verdict": "approved"
+        }
+      ]
+    }
+  ],
+  "plan_file_hash": "sha256:cd2310da50cac45b6d75509d2c867008426f894c0c2c09757a4547ae545c0c4e",
+  "plan_version": 1,
+  "proof_schema_version": 1,
+  "purpose": "plan-pr",
+  "superseded_items": []
+}
