@@ -14,8 +14,11 @@ public struct Greeter {
     /// Returns the generic greeting "Hello, world!" for callers with no
     /// specific name to greet.
     ///
+    /// Delegates to `greet(name:)` so the two overloads can never drift
+    /// out of sync with each other.
+    ///
     /// - Returns: "Hello, world!".
     public func greet() -> String {
-        "Hello, world!"
+        greet(name: "world")
     }
 }
