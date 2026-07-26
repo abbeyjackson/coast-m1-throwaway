@@ -15,7 +15,14 @@ instructions differ (F2 §8):
 2. the Test-review specialist (D62, M2) — judges test QUALITY; the D92
    locked-tests rule means it reviews tests, never edits them,
 3. the Domain-rules reviewer (D64, M2) — judges compliance with the
-   project's domain-rules document.
+   project's domain-rules document. When the document does not exist yet,
+   this pass posts a deterministic COMMENT stating the absence — no model
+   call (its residual judgment would duplicate the general pass).
+
+Cost shape: the plan + diff ride as one shared, cache_control-marked system
+block, byte-identical across passes and retry rounds — billed at full input
+price once, then read from the prompt cache (cost benchmark follow-up,
+2026-07-17).
 
 Two invariants keep the one-identity model sound:
 
@@ -59,13 +66,19 @@ def sh(*args, stdin=None):
     return result.stdout
 
 
-def call_model(system, messages):
+def call_model(system_blocks, messages):
+    """system_blocks is a list of content blocks. The FIRST block carries the
+    shared review context with cache_control: its bytes are identical across
+    all three passes (and across RETRY_FIELD rounds), so pass 1 writes the
+    prompt-cache prefix and every later call reads it at a tenth of the input
+    price. Pass-specific instructions ride in later blocks / the user turn —
+    after the cache breakpoint, so they never break the shared prefix."""
     request = urllib.request.Request(
         "https://api.anthropic.com/v1/messages",
         data=json.dumps({
             "model": MODEL,
             "max_tokens": 4096,
-            "system": system,
+            "system": system_blocks,
             "messages": messages,
         }).encode("utf-8"),
         headers={
@@ -75,6 +88,15 @@ def call_model(system, messages):
         })
     with urllib.request.urlopen(request, timeout=300) as response:
         payload = json.load(response)
+    usage = payload.get("usage", {})
+    # Metering line for the job log: reviewer calls run here on the customer's
+    # key, outside the sidecar's cost stream, so this is where they're counted.
+    print(f"COAST-REVIEW-USAGE model={MODEL}"
+          f" input_tokens={usage.get('input_tokens', 0)}"
+          f" output_tokens={usage.get('output_tokens', 0)}"
+          f" cache_read_input_tokens={usage.get('cache_read_input_tokens', 0)}"
+          f" cache_creation_input_tokens={usage.get('cache_creation_input_tokens', 0)}",
+          flush=True)
     return "".join(block.get("text", "") for block in payload.get("content", []))
 
 
@@ -85,7 +107,13 @@ FINDINGS_SHAPE = """"summary": "<one paragraph>",
 Rules: verdict "request_changes" requires at least one blocking finding; every finding
 cites file/line/rule (D39) and its "file" must be a path you were shown (the diff, or a
 document handed to you); a clean pass still lists what you checked in "summary" (a bare
-verdict is invalid)."""
+verdict is invalid).
+Summary discipline: the summary is an audit line, not an essay — one clause per
+rule/criterion you actually checked, plus at most one sentence of overall judgment. Its
+length follows the work reviewed, never a target: a trivial diff earns a sentence; a
+large one earns exactly as many clauses as it has things checked. No filler, no
+restating the diff, no praise prose. Findings likewise: the issue and the fix, nothing
+more."""
 
 # The general pass carries the PR's one state-bearing approval, and Coast's
 # gate waits for APPROVED or CHANGES_REQUESTED — so "comment" is not a legal
@@ -132,6 +160,9 @@ Judge only the tests in the diff:
   input actually assert the rejection (D64's negative-coverage concern)?
 - Post-work unit tests (D24): do they add coverage below plan resolution, or merely
   restate the requirement tests?
+- Redundant volume: tests that re-exercise an already-pinned code path with cosmetic
+  input variations add noise, not coverage — flag it (non-blocking) so the suite stays
+  a statement of behavior, not bulk.
 
 Do not judge implementation design, naming, or architecture — the general review agent
 owns those. A finding outside test quality is out of your scope; leave it out. You
@@ -144,14 +175,14 @@ in one authoritative place — the domain-rules document — and your job is to 
 diff against exactly those rules, never rules you invent. Build/test results and scope
 checks are settled facts; do not re-derive them.
 
-- When a domain-rules document is provided: check each rule that the diff could touch,
-  and cite the specific rule in each finding (the document itself is a citable file).
+- Check each rule that the diff could touch, and cite the specific rule in each
+  finding (the document itself is a citable file). Never manufacture a rule the
+  document does not state.
 - A diff that touches no rule's territory is a clean pass — say which rules you
   considered.
-- When NO domain-rules document exists yet: state that plainly in your summary, judge
-  only against invariants the plan itself establishes (its item descriptions and
-  acceptance criteria), and never manufacture a rule. Absence of the document is a
-  fact to report, not a finding against this PR.
+
+(You run only when the document exists — an absent document is handled
+deterministically by the harness, without a model call.)
 
 Do not judge test quality or implementation design — other reviewers own those. You
 decide blocking vs non-blocking. """ + SPECIALIST_SHAPE
@@ -189,12 +220,12 @@ def validate_review(candidate, citable_paths, allowed_verdicts):
     return errors
 
 
-def run_pass(name, system, user_prompt, citable_paths, allowed_verdicts):
+def run_pass(name, system_blocks, user_prompt, citable_paths, allowed_verdicts):
     """One review pass: bounded surgical field-rejection rounds (D37/D72).
     Returns the validated review dict, or None after exhaustion."""
     messages = [{"role": "user", "content": user_prompt}]
     for attempt in range(1, RETRY_FIELD + 1):
-        text = call_model(system, messages).strip()
+        text = call_model(system_blocks, messages).strip()
         try:
             candidate = json.loads(text)
             errors = validate_review(candidate, citable_paths, allowed_verdicts)
@@ -236,8 +267,10 @@ def read_capped(path, cap):
     return content
 
 
-def post_review(repo, pr_number, event, review, label):
-    lines = [f"**{label}** ({MODEL})", "", review["summary"], ""]
+def post_review(repo, pr_number, event, review, label, engine):
+    """engine names what produced the review — the model for a model pass, or
+    "deterministic — no model call" for the harness's own verdicts."""
+    lines = [f"**{label}** ({engine})", "", review["summary"], ""]
     for finding in review.get("findings", []):
         marker = "🛑 blocking" if finding.get("blocking") else "💬 non-blocking"
         where = f"`{finding['file']}`" + (f":{finding['line']}" if "line" in finding else "")
@@ -252,8 +285,45 @@ def main():
     pr_number, base_sha, head_sha = sys.argv[1], sys.argv[2], sys.argv[3]
     repo = os.environ["GITHUB_REPOSITORY"]
 
-    feature_id = os.environ.get("GITHUB_HEAD_REF", "").removeprefix("feature/")
-    plan = open(f"plans/{feature_id}/plan.json").read()
+    # Identity from the PR's content, never the branch name (the branch
+    # format is a per-project setting — round 23): the feature is the single
+    # plans/<feature_id>/ directory this PR touches between base and head.
+    changed = sh("git", "diff", "--name-only", f"{base_sha}..{head_sha}", "--", "plans/")
+    ids = sorted({p.split("/")[1] for p in changed.splitlines() if p.count("/") >= 2})
+    if len(ids) != 1:
+        raise SystemExit(f"expected exactly one plans/<feature_id>/ dir changed base..head, found: {ids or 'none'}")
+    feature_id = ids[0]
+
+    # Direct-change PRs (coast-ticket-types-spec.md §3, D116): nothing
+    # judgeable — the change IS the specification, and verify_proof.py's
+    # dc-checks are the gate (diff scope + content match on both trees).
+    # The required approving review is submitted deterministically; no
+    # model is called and nothing is billed.
+    try:
+        proof = json.load(open(f"plans/{feature_id}/proof.json"))
+    except (OSError, ValueError):
+        proof = {}
+    if proof.get("purpose") == "direct-change":
+        post_review(repo, pr_number, "APPROVE",
+                    {"summary": "Direct change: the exact ticketed edit, applied deterministically. "
+                                "The proof verifier confirmed the diff touches only the declared "
+                                "catalogs and both trees match the declaration — nothing for an AI "
+                                "reviewer to judge, so no model was called.",
+                     "findings": []},
+                    "Direct-change review", "deterministic — no model call")
+        # No COAST-REVIEW-USAGE line: nothing was metered, nothing to ingest.
+        return
+    # A contained bug fix (purpose bug-fix, §6.5) has no plan — its context
+    # is the investigation record + repro test from the proof; the review
+    # judges the fix against those the way a feature review judges the plan.
+    if proof.get("purpose") == "bug-fix":
+        plan_label = "The bug's investigation record and repro test (no plan exists — a contained fix)"
+        plan = json.dumps({"investigation": proof.get("investigation"),
+                           "repro_test": proof.get("repro_test"),
+                           "fix_scope": proof.get("fix_scope")}, indent=2, ensure_ascii=False)
+    else:
+        plan_label = "The approved plan (already merged via its own reviewed PR)"
+        plan = open(f"plans/{feature_id}/plan.json").read()
     diff = sh("git", "diff", f"{base_sha}..{head_sha}")
     if len(diff) > MAX_DIFF_CHARS:
         diff = diff[:MAX_DIFF_CHARS] + "\n… [diff truncated]"
@@ -262,8 +332,23 @@ def main():
     diff_paths = set(p for p in
                      sh("git", "diff", "--name-only", "-z", f"{base_sha}..{head_sha}").split("\0") if p)
 
-    base_prompt = (f"The approved plan (already merged via its own reviewed PR):\n{plan}\n\n"
-                   f"The implementation diff to review:\n{diff}")
+    # The shared review context is one block, byte-identical for every pass,
+    # carried as the FIRST system block with cache_control (see call_model):
+    # the plan + diff are billed at full input price once, then read from
+    # cache by the later passes and by every retry round. Pass-specific
+    # material (test files, the domain-rules document) rides in the user turn,
+    # after the cache breakpoint.
+    shared_context = {
+        "type": "text",
+        "text": (f"{plan_label}:\n{plan}\n\n"
+                 f"The implementation diff to review:\n{diff}"),
+        "cache_control": {"type": "ephemeral"},
+    }
+
+    def pass_system(role_system):
+        return [shared_context, {"type": "text", "text": role_system}]
+
+    base_prompt = "Review the plan and diff in your system context."
 
     # The Test-review specialist gets the changed test files in full: judging
     # assertion quality needs the tests themselves, not just hunks. ("Tests/"
@@ -286,36 +371,69 @@ def main():
                                  if test_sections else
                                  "\n\nNo test files changed in this diff.")
 
-    # The Domain-rules reviewer gets the document, and may cite it (D39's
-    # existence check extends to exactly what it was handed).
-    domain_citable = set(diff_paths)
-    if os.path.exists(DOMAIN_RULES_DOC):
-        rules_doc = (f"The project's domain-rules document ({DOMAIN_RULES_DOC}):\n"
-                     + read_capped(DOMAIN_RULES_DOC, MAX_DIFF_CHARS))
-        domain_citable.add(DOMAIN_RULES_DOC)
-    else:
-        rules_doc = (f"No domain-rules document exists for this project yet ({DOMAIN_RULES_DOC} is absent). "
-                     "Judge only against invariants the plan itself establishes, and say so in your summary.")
+    # The generated API reference for each module the diff touches (deltas
+    # 31b): the general pass reads it so a doc that reads wrong against the
+    # code surfaces as a finding. The pages are Coast-generated world-state
+    # in the checkout (docs/api/<Module>-reference.md), capped like tests.
+    docs_sections = []
+    touched_modules = sorted({p.split("/")[1] for p in diff_paths
+                              if p.startswith("Sources/") and p.count("/") >= 2})
+    for module in touched_modules:
+        page = f"docs/api/{module}-reference.md"
+        if not os.path.exists(page):
+            continue
+        docs_sections.append(f"--- {page} (generated API reference) ---\n"
+                             + read_capped(page, MAX_TEST_FILE_CHARS))
+    general_prompt = base_prompt + (
+        "\n\nThe generated API reference for the modules this diff touches "
+        "(these pages are regenerated from the code — flag any that read "
+        "wrong or misleading against the diff):\n" + "\n".join(docs_sections)
+        if docs_sections else "")
 
     # Collect every verdict BEFORE posting anything (atomic like M1): a
     # failed run posts no reviews, so it can never leave a standing APPROVE
     # for work the specialists never judged, and Coast's crash classifier
     # (failed job + no CHANGES_REQUESTED = infra) stays sound.
     passes = [
-        ("Coast review agent", GENERAL_SYSTEM, base_prompt, diff_paths,
+        ("Coast review agent", GENERAL_SYSTEM, general_prompt, diff_paths,
          ("approve", "request_changes")),
         ("Coast Test-review specialist", TEST_REVIEW_SYSTEM, test_prompt, diff_paths,
          ("approve", "request_changes", "comment")),
-        ("Coast Domain-rules reviewer", DOMAIN_RULES_SYSTEM, base_prompt + "\n\n" + rules_doc,
-         domain_citable, ("approve", "request_changes", "comment")),
     ]
+    # The Domain-rules pass costs a model call only when there are rules to
+    # judge against. With no document, its residual judgment ("invariants the
+    # plan itself establishes") duplicates the general pass — so the harness
+    # states the absence deterministically instead of paying a model to.
+    domain_label = "Coast Domain-rules reviewer"
+    engine_by_label = {}  # label -> engine name; absent = MODEL (a model pass)
+    if os.path.exists(DOMAIN_RULES_DOC):
+        # The reviewer gets the document, and may cite it (D39's existence
+        # check extends to exactly what it was handed).
+        domain_citable = set(diff_paths) | {DOMAIN_RULES_DOC}
+        rules_doc = (f"The project's domain-rules document ({DOMAIN_RULES_DOC}):\n"
+                     + read_capped(DOMAIN_RULES_DOC, MAX_DIFF_CHARS))
+        passes.append((domain_label, DOMAIN_RULES_SYSTEM, base_prompt + "\n\n" + rules_doc,
+                       domain_citable, ("approve", "request_changes", "comment")))
+
     collected = []
     for label, system, prompt, citable, allowed in passes:
-        review = run_pass(label, system, prompt, citable, allowed)
+        review = run_pass(label, pass_system(system), prompt, citable, allowed)
         if review is None:
             print(f"{label}: failed structured output after retries — failing the job "
                   "with NO reviews posted (blocked, never silent)")
             return 1
+        collected.append((label, review))
+
+    if not os.path.exists(DOMAIN_RULES_DOC):
+        label, review = domain_label, {
+            "verdict": "comment",
+            "summary": (f"No domain-rules document exists for this project yet ({DOMAIN_RULES_DOC} "
+                        "is absent), so there are no filed rules to judge this diff against. "
+                        "Plan-established invariants are already judged by the general review "
+                        "pass. This pass activates automatically once the document exists."),
+            "findings": [],
+        }
+        engine_by_label[label] = "deterministic — no model call"
         collected.append((label, review))
 
     # Post: the general pass first (the one state-bearing APPROVE), then the
@@ -326,7 +444,7 @@ def main():
             event = {"approve": "APPROVE", "request_changes": "REQUEST_CHANGES"}[review["verdict"]]
         else:
             event = "REQUEST_CHANGES" if review["verdict"] == "request_changes" else "COMMENT"
-        post_review(repo, pr_number, event, review, label)
+        post_review(repo, pr_number, event, review, label, engine_by_label.get(label, MODEL))
 
     # A blocking review leaves the PR unmergeable via the ruleset — the fix
     # loop (L4) is Coast's to drive; the job itself succeeded.
