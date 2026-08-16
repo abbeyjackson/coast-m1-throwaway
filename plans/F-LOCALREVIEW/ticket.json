@@ -1,0 +1,6 @@
+{
+  "description": "Verify the local-review path end to end: the Greeter service with greet(name:) and greet().",
+  "feature_id": "F-LOCALREVIEW",
+  "ticket_ref": "LR-1",
+  "ticket_schema_version": 1
+}
